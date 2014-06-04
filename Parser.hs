@@ -1,19 +1,16 @@
 module Parser where
 import qualified Data.Char as C
+import  Utils
 
 data Parser a = Parser (String -> [(a, String)])
 
 parse (Parser p) = p
 
 instance Monad Parser where
--- unit is a parser that consumes no input, and returns whatever it's given
    return a = Parser (\s -> [(a,s)])
-   p >>= f = Parser (\s -> let res = parse p s in
-                               concat $
-                               map (\ (a, s') ->
-                                      parse (f a) s')
-                                   res)
-
+   p >>= f = Parser (\s -> parse p s |>
+                         map (\ (a, s') -> parse (f a) s') |>
+                         concat)
 -- Monad Laws
 {-
 
@@ -85,6 +82,26 @@ manyN :: Parser a -> Int -> Parser [a]
 manyN p 1 = do {c <- p; return [c]}
 manyN p n = do {c <- p; rest <- manyN p (n-1); return (c:rest)}
 
+
+manyTill :: Parser a -> Parser b -> Parser [a]
+manyTill p end = manyTill1 p end `option` return []
+
+manyTill1 :: Parser a -> Parser b -> Parser [a]
+manyTill1 p end = do a <- p
+                     b <- lookAhead end
+                     if b then return [a] else
+                        do as <- manyTill p end
+                           return (a:as)
+
+
+lookAhead :: Parser a -> Parser Bool
+lookAhead p = Parser (\s ->
+                         case parse p s of
+                         [] -> [(False, s)]
+                         l -> [(True, s)])
+
+quotedString :: Parser String
+quotedString = do { char '"'; s <- manyTill item (char '"'); char '"'; return s}
 -- Lexical combinators
 
 space :: Parser String
